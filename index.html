@@ -240,6 +240,7 @@
       },
       options: { ...baseOpts, scales: { x: baseOpts.scales.x, y: { position: "left", beginAtZero: true, ticks: { color: "#c084fc" }, grid: { color: "#334155" } }, y1: { position: "right", beginAtZero: true, ticks: { color: "#fb923c" }, grid: { drawOnChartArea: false } } } }
     });
+    
     const axesChart = new Chart(document.getElementById("axesChart"), {
       type: "line",
       data: {
