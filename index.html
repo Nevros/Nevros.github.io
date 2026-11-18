@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Laur's Full POTS & Sleep Dashboard</title>
+  <title>Laur's Full POTS, Sleep & Weather Dashboard</title>
   <script src="https://jsdelivr.net"></script>
   <style>
     * { box-sizing: border-box; }
@@ -50,7 +50,7 @@
       border: 1px solid #334155;
     }
     .label { font-size: 10.5px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
-    .val { font-size: 20px; font-weight: 700; margin-top: 3px; }
+    .val { font-size: 19px; font-weight: 700; margin-top: 3px; }
     .sub { font-size: 11px; color: #cbd5e1; margin-top: 2px; }
     .chart-box {
       background: #1e293b;
@@ -127,7 +127,13 @@
     </div>
 
     <div class="card">
-      <div class="label">Pod Battery</div>
+      <div class="label">Local Weather</div>
+      <div class="val" id="wxVal" style="color:#2dd4bf;">--°F | --%</div>
+      <div class="sub" id="wxSub">Pressure: -- hPa</div>
+    </div>
+
+    <div class="card" style="grid-column: span 2;">
+      <div class="label">Pod Battery & Storage</div>
       <div class="val" id="batVal" style="color:#4ade80;">--%</div>
       <div class="sub" id="logCountSub">0 saved logs</div>
     </div>
@@ -159,7 +165,12 @@
   </div>
 
   <div class="chart-box">
-    <div class="chart-title">6. Pod Battery Level (%)</div>
+    <div class="chart-title">6. Local Weather Triggers: Barometric Pressure (hPa) & Outdoor Temp (°F)</div>
+    <canvas id="wxChart"></canvas>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">7. Pod Battery Level (%)</div>
     <canvas id="batChart"></canvas>
   </div>
 
@@ -170,6 +181,7 @@
 
     let logs = JSON.parse(localStorage.getItem("potsLogs") || "[]");
     let selectedHours = 1;
+    let hourlyWxMap = {}; // Maps epoch-hour -> { outTempF, humidity, pressure }
 
     const baseOpts = {
       responsive: true,
@@ -228,7 +240,6 @@
       },
       options: { ...baseOpts, scales: { x: baseOpts.scales.x, y: { position: "left", beginAtZero: true, ticks: { color: "#c084fc" }, grid: { color: "#334155" } }, y1: { position: "right", beginAtZero: true, ticks: { color: "#fb923c" }, grid: { drawOnChartArea: false } } } }
     });
-
     const axesChart = new Chart(document.getElementById("axesChart"), {
       type: "line",
       data: {
@@ -242,6 +253,18 @@
       options: { ...baseOpts, scales: { x: baseOpts.scales.x, y: { min: -11, max: 11, ticks: { color: "#94a3b8" }, grid: { color: "#334155" } } } }
     });
 
+    const wxChart = new Chart(document.getElementById("wxChart"), {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          { label: "Pressure (hPa)", data: [], borderColor: "#2dd4bf", tension: 0.25, spanGaps: true, pointRadius: 1, yAxisID: "y" },
+          { label: "Outdoor Temp (°F)", data: [], borderColor: "#fb7185", tension: 0.25, spanGaps: true, pointRadius: 1, yAxisID: "y1" }
+        ]
+      },
+      options: { ...baseOpts, scales: { x: baseOpts.scales.x, y: { position: "left", ticks: { color: "#2dd4bf" }, grid: { color: "#334155" } }, y1: { position: "right", ticks: { color: "#fb7185" }, grid: { drawOnChartArea: false } } } }
+    });
+
     const batChart = new Chart(document.getElementById("batChart"), {
       type: "line",
       data: {
@@ -252,6 +275,68 @@
       },
       options: { ...baseOpts, scales: { x: baseOpts.scales.x, y: { min: 0, max: 100, ticks: { color: "#4ade80" }, grid: { color: "#334155" } } } }
     });
+
+    // Fetch Live + Past 7 Days Hourly Weather from Open-Meteo (Free, No API Key)
+    function lookupWxForTimestamp(tsMs) {
+      const hourKey = Math.floor(tsMs / 3600000);
+      return hourlyWxMap[hourKey] || hourlyWxMap[hourKey - 1] || null;
+    }
+
+    function backfillMissingWeather() {
+      let updated = false;
+      logs.forEach(r => {
+        if (r.pressure == null) {
+          const wx = lookupWxForTimestamp(r.ts);
+          if (wx) {
+            r.outTempF = wx.outTempF;
+            r.humidity = wx.humidity;
+            r.pressure = wx.pressure;
+            updated = true;
+          }
+        }
+      });
+      if (updated) {
+        localStorage.setItem("potsLogs", JSON.stringify(logs));
+      }
+    }
+
+    async function fetchLocalWeather() {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        try {
+          const lat = pos.coords.latitude.toFixed(4);
+          const lon = pos.coords.longitude.toFixed(4);
+          const url = `https://open-meteo.com{lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,pressure_msl&hourly=temperature_2m,relative_humidity_2m,pressure_msl&temperature_unit=fahrenheit&past_days=7&forecast_days=1`;
+          const res = await fetch(url);
+          const data = await res.json();
+
+          if (data.current) {
+            document.getElementById("wxVal").textContent = `${data.current.temperature_2m.toFixed(0)}°F | ${data.current.relative_humidity_2m.toFixed(0)}%`;
+            document.getElementById("wxSub").textContent = `Pressure: ${data.current.pressure_msl.toFixed(1)} hPa`;
+          }
+
+          if (data.hourly && data.hourly.time) {
+            data.hourly.time.forEach((isoStr, idx) => {
+              const hrEpoch = Math.floor(new Date(isoStr + "Z").getTime() / 3600000);
+              hourlyWxMap[hrEpoch] = {
+                outTempF: data.hourly.temperature_2m[idx],
+                humidity: data.hourly.relative_humidity_2m[idx],
+                pressure: data.hourly.pressure_msl[idx]
+              };
+            });
+            backfillMissingWeather();
+            refreshDashboard();
+          }
+        } catch (e) {
+          console.log("Weather fetch error:", e);
+        }
+      }, () => {
+        document.getElementById("wxSub").textContent = "Enable Location for weather";
+      });
+    }
+
+    fetchLocalWeather();
+    setInterval(fetchLocalWeather, 15 * 60 * 1000); // Refresh weather every 15 mins
 
     function refreshDashboard() {
       logs.sort((a, b) => a.ts - b.ts);
@@ -311,33 +396,38 @@
       const labels = d.map(r => r.time);
 
       hrTiltChart.data.labels = labels;
-      hrTiltChart.data.datasets[0].data = d.map(r => r.bpm > 0 ? r.bpm : null);
-      hrTiltChart.data.datasets[1].data = d.map(r => r.tiltDeg);
+      hrTiltChart.data.datasets.data = d.map(r => r.bpm > 0 ? r.bpm : null);
+      hrTiltChart.data.datasets.data = d.map(r => r.tiltDeg);
       hrTiltChart.update();
 
       hrvSpo2Chart.data.labels = labels;
-      hrvSpo2Chart.data.datasets[0].data = d.map(r => (r.still === 1 && r.hrv > 0) ? r.hrv : null);
-      hrvSpo2Chart.data.datasets[1].data = d.map(r => r.spo2 > 70 ? r.spo2 : null);
+      hrvSpo2Chart.data.datasets.data = d.map(r => (r.still === 1 && r.hrv > 0) ? r.hrv : null);
+      hrvSpo2Chart.data.datasets.data = d.map(r => r.spo2 > 70 ? r.spo2 : null);
       hrvSpo2Chart.update();
 
       tempRespChart.data.labels = labels;
-      tempRespChart.data.datasets[0].data = d.map(r => r.tempF > 50 ? r.tempF : null);
-      tempRespChart.data.datasets[1].data = d.map(r => r.respRate > 0 ? r.respRate : null);
+      tempRespChart.data.datasets.data = d.map(r => r.tempF > 50 ? r.tempF : null);
+      tempRespChart.data.datasets.data = d.map(r => r.respRate > 0 ? r.respRate : null);
       tempRespChart.update();
 
       imuChart.data.labels = labels;
-      imuChart.data.datasets[0].data = d.map(r => r.motion);
-      imuChart.data.datasets[1].data = d.map(r => r.gyroDps);
+      imuChart.data.datasets.data = d.map(r => r.motion);
+      imuChart.data.datasets.data = d.map(r => r.gyroDps);
       imuChart.update();
 
       axesChart.data.labels = labels;
-      axesChart.data.datasets[0].data = d.map(r => r.ax);
-      axesChart.data.datasets[1].data = d.map(r => r.ay);
-      axesChart.data.datasets[2].data = d.map(r => r.az);
+      axesChart.data.datasets.data = d.map(r => r.ax);
+      axesChart.data.datasets.data = d.map(r => r.ay);
+      axesChart.data.datasets.data = d.map(r => r.az);
       axesChart.update();
 
+      wxChart.data.labels = labels;
+      wxChart.data.datasets.data = d.map(r => r.pressure ?? null);
+      wxChart.data.datasets.data = d.map(r => r.outTempF ?? null);
+      wxChart.update();
+
       batChart.data.labels = labels;
-      batChart.data.datasets[0].data = d.map(r => r.bat);
+      batChart.data.datasets.data = d.map(r => r.bat);
       batChart.update();
     }
 
@@ -348,11 +438,7 @@
         selectedHours = Number(btn.dataset.hours);
         refreshDashboard();
       });
-    });
-
-    refreshDashboard();
-
-    document.getElementById("connectBtn").addEventListener("click", async () => {
+        document.getElementById("connectBtn").addEventListener("click", async () => {
       try {
         const device = await navigator.bluetooth.requestDevice({
           filters: [{ name: DEVICE_NAME }],
@@ -388,8 +474,15 @@
           const [bpm, hrv, spo2, still, tempF, posture, tiltDeg, motion, gyroDps, respRate, ax, ay, az, bat] = vals;
           const recordTs = Date.now() - (ageSec * 1000);
           const time = new Date(recordTs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          const wx = lookupWxForTimestamp(recordTs);
 
-          logs.push({ ts: recordTs, time, bpm, hrv, spo2, still, tempF, posture, tiltDeg, motion, gyroDps, respRate, ax, ay, az, bat });
+          logs.push({
+            ts: recordTs, time, bpm, hrv, spo2, still, tempF, posture, tiltDeg,
+            motion, gyroDps, respRate, ax, ay, az, bat,
+            outTempF: wx ? wx.outTempF : null,
+            humidity: wx ? wx.humidity : null,
+            pressure: wx ? wx.pressure : null
+          });
           localStorage.setItem("potsLogs", JSON.stringify(logs));
           refreshDashboard();
         });
@@ -399,8 +492,8 @@
     });
 
     document.getElementById("exportBtn").addEventListener("click", () => {
-      const header = "iso_timestamp,local_time,bpm,hrv_ms,spo2_pct,is_still,skin_temp_f,posture_upright,tilt_deg,accel_motion,gyro_dps,resp_rate_bpm,accel_x,accel_y,accel_z,battery_pct\n";
-      const rows = logs.map(r => `${new Date(r.ts).toISOString()},${r.time},${r.bpm},${r.hrv},${r.spo2},${r.still},${r.tempF},${r.posture},${r.tiltDeg},${r.motion},${r.gyroDps},${r.respRate},${r.ax},${r.ay},${r.az},${r.bat}`).join("\n");
+      const header = "iso_timestamp,local_time,bpm,hrv_ms,spo2_pct,is_still,skin_temp_f,posture_upright,tilt_deg,accel_motion,gyro_dps,resp_rate_bpm,accel_x,accel_y,accel_z,battery_pct,outdoor_temp_f,humidity_pct,pressure_hpa\n";
+      const rows = logs.map(r => `${new Date(r.ts).toISOString()},${r.time},${r.bpm},${r.hrv},${r.spo2},${r.still},${r.tempF},${r.posture},${r.tiltDeg},${r.motion},${r.gyroDps},${r.respRate},${r.ax},${r.ay},${r.az},${r.bat},${r.outTempF ?? ""},${r.humidity ?? ""},${r.pressure ?? ""}`).join("\n");
       const blob = new Blob([header + rows], { type: "text/csv" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
