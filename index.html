@@ -314,6 +314,7 @@
             document.getElementById("wxVal").textContent = `${data.current.temperature_2m.toFixed(0)}°F | ${data.current.relative_humidity_2m.toFixed(0)}%`;
             document.getElementById("wxSub").textContent = `Pressure: ${data.current.pressure_msl.toFixed(1)} hPa`;
           }
+
           if (data.hourly && data.hourly.time) {
             data.hourly.time.forEach((isoStr, idx) => {
               const hrEpoch = Math.floor(new Date(isoStr + "Z").getTime() / 3600000);
@@ -335,7 +336,7 @@
     }
 
     fetchLocalWeather();
-    setInterval(fetchLocalWeather, 15 * 60 * 1000);
+    setInterval(fetchLocalWeather, 15 * 60 * 1000); // Refresh weather every 15 mins
 
     function refreshDashboard() {
       logs.sort((a, b) => a.ts - b.ts);
@@ -395,38 +396,38 @@
       const labels = d.map(r => r.time);
 
       hrTiltChart.data.labels = labels;
-      hrTiltChart.data.datasets[0].data = d.map(r => r.bpm > 0 ? r.bpm : null);
-      hrTiltChart.data.datasets[1].data = d.map(r => r.tiltDeg);
+      hrTiltChart.data.datasets.data = d.map(r => r.bpm > 0 ? r.bpm : null);
+      hrTiltChart.data.datasets.data = d.map(r => r.tiltDeg);
       hrTiltChart.update();
 
       hrvSpo2Chart.data.labels = labels;
-      hrvSpo2Chart.data.datasets[0].data = d.map(r => (r.still === 1 && r.hrv > 0) ? r.hrv : null);
-      hrvSpo2Chart.data.datasets[1].data = d.map(r => r.spo2 > 70 ? r.spo2 : null);
+      hrvSpo2Chart.data.datasets.data = d.map(r => (r.still === 1 && r.hrv > 0) ? r.hrv : null);
+      hrvSpo2Chart.data.datasets.data = d.map(r => r.spo2 > 70 ? r.spo2 : null);
       hrvSpo2Chart.update();
 
       tempRespChart.data.labels = labels;
-      tempRespChart.data.datasets[0].data = d.map(r => r.tempF > 50 ? r.tempF : null);
-      tempRespChart.data.datasets[1].data = d.map(r => r.respRate > 0 ? r.respRate : null);
+      tempRespChart.data.datasets.data = d.map(r => r.tempF > 50 ? r.tempF : null);
+      tempRespChart.data.datasets.data = d.map(r => r.respRate > 0 ? r.respRate : null);
       tempRespChart.update();
 
       imuChart.data.labels = labels;
-      imuChart.data.datasets[0].data = d.map(r => r.motion);
-      imuChart.data.datasets[1].data = d.map(r => r.gyroDps);
+      imuChart.data.datasets.data = d.map(r => r.motion);
+      imuChart.data.datasets.data = d.map(r => r.gyroDps);
       imuChart.update();
 
       axesChart.data.labels = labels;
-      axesChart.data.datasets[0].data = d.map(r => r.ax);
-      axesChart.data.datasets[1].data = d.map(r => r.ay);
-      axesChart.data.datasets[2].data = d.map(r => r.az);
+      axesChart.data.datasets.data = d.map(r => r.ax);
+      axesChart.data.datasets.data = d.map(r => r.ay);
+      axesChart.data.datasets.data = d.map(r => r.az);
       axesChart.update();
 
       wxChart.data.labels = labels;
-      wxChart.data.datasets[0].data = d.map(r => r.pressure ?? null);
-      wxChart.data.datasets[1].data = d.map(r => r.outTempF ?? null);
+      wxChart.data.datasets.data = d.map(r => r.pressure ?? null);
+      wxChart.data.datasets.data = d.map(r => r.outTempF ?? null);
       wxChart.update();
 
       batChart.data.labels = labels;
-      batChart.data.datasets[0].data = d.map(r => r.bat);
+      batChart.data.datasets.data = d.map(r => r.bat);
       batChart.update();
     }
 
@@ -440,7 +441,6 @@
     });
 
     refreshDashboard();
-
     document.getElementById("connectBtn").addEventListener("click", async () => {
       try {
         const device = await navigator.bluetooth.requestDevice({
