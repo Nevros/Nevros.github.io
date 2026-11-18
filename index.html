@@ -181,7 +181,7 @@
 
     let logs = JSON.parse(localStorage.getItem("potsLogs") || "[]");
     let selectedHours = 1;
-    let hourlyWxMap = {}; // Maps epoch-hour -> { outTempF, humidity, pressure }
+    let hourlyWxMap = {};
 
     const baseOpts = {
       responsive: true,
@@ -276,7 +276,6 @@
       options: { ...baseOpts, scales: { x: baseOpts.scales.x, y: { min: 0, max: 100, ticks: { color: "#4ade80" }, grid: { color: "#334155" } } } }
     });
 
-    // Fetch Live + Past 7 Days Hourly Weather from Open-Meteo (Free, No API Key)
     function lookupWxForTimestamp(tsMs) {
       const hourKey = Math.floor(tsMs / 3600000);
       return hourlyWxMap[hourKey] || hourlyWxMap[hourKey - 1] || null;
@@ -319,9 +318,9 @@
             data.hourly.time.forEach((isoStr, idx) => {
               const hrEpoch = Math.floor(new Date(isoStr + "Z").getTime() / 3600000);
               hourlyWxMap[hrEpoch] = {
-                outTempF: data.hourly.temperature_2m[idx],
-                humidity: data.hourly.relative_humidity_2m[idx],
-                pressure: data.hourly.pressure_msl[idx]
+                outTempF: data.hourly.temperature_2m.at(idx),
+                humidity: data.hourly.relative_humidity_2m.at(idx),
+                pressure: data.hourly.pressure_msl.at(idx)
               };
             });
             backfillMissingWeather();
@@ -336,7 +335,7 @@
     }
 
     fetchLocalWeather();
-    setInterval(fetchLocalWeather, 15 * 60 * 1000); // Refresh weather every 15 mins
+    setInterval(fetchLocalWeather, 15 * 60 * 1000);
 
     function refreshDashboard() {
       logs.sort((a, b) => a.ts - b.ts);
@@ -346,7 +345,7 @@
       document.getElementById("logCountSub").textContent = `${logs.length} total saved logs`;
 
       if (filtered.length > 0) {
-        const latest = filtered[filtered.length - 1];
+        const latest = filtered.at(-1);
 
         document.getElementById("bpmVal").textContent = latest.bpm > 0 ? `${latest.bpm.toFixed(0)} BPM` : "No Contact";
         document.getElementById("spo2Val").textContent = latest.spo2 > 70 ? `${latest.spo2.toFixed(1)}%` : "--%";
@@ -396,38 +395,38 @@
       const labels = d.map(r => r.time);
 
       hrTiltChart.data.labels = labels;
-      hrTiltChart.data.datasets.data = d.map(r => r.bpm > 0 ? r.bpm : null);
-      hrTiltChart.data.datasets.data = d.map(r => r.tiltDeg);
+      hrTiltChart.data.datasets.at(0).data = d.map(r => r.bpm > 0 ? r.bpm : null);
+      hrTiltChart.data.datasets.at(1).data = d.map(r => r.tiltDeg);
       hrTiltChart.update();
 
       hrvSpo2Chart.data.labels = labels;
-      hrvSpo2Chart.data.datasets.data = d.map(r => (r.still === 1 && r.hrv > 0) ? r.hrv : null);
-      hrvSpo2Chart.data.datasets.data = d.map(r => r.spo2 > 70 ? r.spo2 : null);
+      hrvSpo2Chart.data.datasets.at(0).data = d.map(r => (r.still === 1 && r.hrv > 0) ? r.hrv : null);
+      hrvSpo2Chart.data.datasets.at(1).data = d.map(r => r.spo2 > 70 ? r.spo2 : null);
       hrvSpo2Chart.update();
 
       tempRespChart.data.labels = labels;
-      tempRespChart.data.datasets.data = d.map(r => r.tempF > 50 ? r.tempF : null);
-      tempRespChart.data.datasets.data = d.map(r => r.respRate > 0 ? r.respRate : null);
+      tempRespChart.data.datasets.at(0).data = d.map(r => r.tempF > 50 ? r.tempF : null);
+      tempRespChart.data.datasets.at(1).data = d.map(r => r.respRate > 0 ? r.respRate : null);
       tempRespChart.update();
 
       imuChart.data.labels = labels;
-      imuChart.data.datasets.data = d.map(r => r.motion);
-      imuChart.data.datasets.data = d.map(r => r.gyroDps);
+      imuChart.data.datasets.at(0).data = d.map(r => r.motion);
+      imuChart.data.datasets.at(1).data = d.map(r => r.gyroDps);
       imuChart.update();
 
       axesChart.data.labels = labels;
-      axesChart.data.datasets.data = d.map(r => r.ax);
-      axesChart.data.datasets.data = d.map(r => r.ay);
-      axesChart.data.datasets.data = d.map(r => r.az);
+      axesChart.data.datasets.at(0).data = d.map(r => r.ax);
+      axesChart.data.datasets.at(1).data = d.map(r => r.ay);
+      axesChart.data.datasets.at(2).data = d.map(r => r.az);
       axesChart.update();
 
       wxChart.data.labels = labels;
-      wxChart.data.datasets.data = d.map(r => r.pressure ?? null);
-      wxChart.data.datasets.data = d.map(r => r.outTempF ?? null);
+      wxChart.data.datasets.at(0).data = d.map(r => r.pressure ?? null);
+      wxChart.data.datasets.at(1).data = d.map(r => r.outTempF ?? null);
       wxChart.update();
 
       batChart.data.labels = labels;
-      batChart.data.datasets.data = d.map(r => r.bat);
+      batChart.data.datasets.at(0).data = d.map(r => r.bat);
       batChart.update();
     }
 
@@ -441,6 +440,7 @@
     });
 
     refreshDashboard();
+
     document.getElementById("connectBtn").addEventListener("click", async () => {
       try {
         const device = await navigator.bluetooth.requestDevice({
@@ -458,13 +458,13 @@
         char.addEventListener("characteristicvaluechanged", (e) => {
           const raw = new TextDecoder().decode(e.target.value);
           const parts = raw.split(",");
-          const type = parts[0];
+          const type = parts.at(0);
 
           let ageSec = 0;
           let vals = [];
 
           if (type === "B") {
-            ageSec = Number(parts[1]);
+            ageSec = Number(parts.at(1));
             vals = parts.slice(2).map(Number);
             document.getElementById("status").textContent = `Synced backlog (${logs.length + 1} logs)`;
           } else if (type === "L") {
